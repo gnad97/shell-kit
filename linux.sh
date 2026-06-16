@@ -234,7 +234,11 @@ setup() {
   echo
   if [[ $errors -eq 0 ]]; then
     _ok "Setup complete — all tools installed/upgraded"
-    _warn "Restart your shell or run: source ~/.bashrc"
+    case "$SHELL" in
+      */zsh)  _warn "Restart your shell or run: source ~/.zshrc" ;;
+      */bash) _warn "Restart your shell or run: source ~/.bashrc" ;;
+      *)      _warn "Restart your shell or run: source ~/.profile" ;;
+    esac
   else
     _err "Setup finished with $errors error(s) — check output above"
     return 1
