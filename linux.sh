@@ -124,38 +124,30 @@ _install_kubevpn() {
 }
 
 _install_teleport() {
+  local arch
+  arch=$(_go_arch) || return 1
+  local version
+  version=$(curl -fsSL https://api.github.com/repos/gravitational/teleport/releases/latest \
+    | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//')
+  if [[ -z "$version" ]]; then
+    _err "Failed to fetch teleport latest version"; return 1
+  fi
   if type -P tsh &>/dev/null; then
-    _log "Upgrading Teleport..."
-    if command -v apt-get &>/dev/null; then
-      sudo apt-get install -y --only-upgrade teleport 2>/dev/null || _warn "teleport already at latest"
-    else
-      _warn "Teleport upgrade skipped — run the installer manually"
-    fi
-    return
-  fi
-  _log "Installing Teleport (tsh)..."
-  if command -v apt-get &>/dev/null; then
-    curl -fsSL https://apt.releases.teleport.dev/gpg \
-      | sudo tee /usr/share/keyrings/teleport-archive-keyring.asc >/dev/null
-    echo "deb [signed-by=/usr/share/keyrings/teleport-archive-keyring.asc] https://apt.releases.teleport.dev/ubuntu $(lsb_release -cs) stable" \
-      | sudo tee /etc/apt/sources.list.d/teleport.list >/dev/null
-    sudo apt-get update -q && sudo apt-get install -y teleport \
-      && _ok "teleport installed" || return 1
+    local current
+    current=$(command tsh version 2>/dev/null | grep -o 'v[0-9.]*' | head -1 | sed 's/^v//')
+    [[ "$current" == "$version" ]] && { _warn "teleport already at latest (v$version)"; return; }
+    _log "Upgrading Teleport to v$version..."
   else
-    local arch
-    arch=$(_go_arch) || return 1
-    local version
-    version=$(curl -fsSL https://api.github.com/repos/gravitational/teleport/releases/latest \
-      | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//')
-    local tmp
-    tmp=$(mktemp -d)
-    curl -fsSL "https://cdn.teleport.dev/teleport-v${version}-linux-${arch}-bin.tar.gz" \
-      -o "$tmp/teleport.tar.gz" \
-      && tar -xzf "$tmp/teleport.tar.gz" -C "$tmp" \
-      && sudo "$tmp/teleport/install" \
-      && _ok "teleport $version installed" || return 1
-    rm -rf "$tmp"
+    _log "Installing Teleport v$version..."
   fi
+  local tmp
+  tmp=$(mktemp -d)
+  curl -fsSL "https://cdn.teleport.dev/teleport-v${version}-linux-${arch}-bin.tar.gz" \
+    -o "$tmp/teleport.tar.gz" \
+    && tar -xzf "$tmp/teleport.tar.gz" -C "$tmp" \
+    && sudo "$tmp/teleport/install" \
+    && _ok "teleport v$version installed" || return 1
+  rm -rf "$tmp"
 }
 
 _install_stern() {
@@ -205,6 +197,12 @@ setup() {
     _err "No supported package manager found (apt/dnf/yum)"
     return 1
   fi
+
+  # Remove stale apt sources from previous installs (now use binary downloads)
+  sudo rm -f /etc/apt/sources.list.d/kubernetes.list \
+             /etc/apt/keyrings/kubernetes-apt-keyring.gpg \
+             /etc/apt/sources.list.d/teleport.list \
+             /usr/share/keyrings/teleport-archive-keyring.asc
 
   _install_kubectl   || (( errors++ ))
   _install_awscli    || (( errors++ ))
