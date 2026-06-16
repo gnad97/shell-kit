@@ -39,33 +39,77 @@ _warn() { echo "[$(date '+%H:%M:%S')] ! $*"; }
 # SETUP
 # =============================================================================
 
+# Returns "amd64" or "arm64" (Go-style naming used by kubevpn, stern, teleport).
+_go_arch() {
+  case "$(uname -m)" in
+    x86_64)        echo "amd64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    *) _err "Unsupported architecture: $(uname -m)"; return 1 ;;
+  esac
+}
+
+# Returns "x86_64" or "aarch64" (AWS CLI naming).
+_aws_arch() {
+  case "$(uname -m)" in
+    x86_64)        echo "x86_64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    *) _err "Unsupported architecture: $(uname -m)"; return 1 ;;
+  esac
+}
+
 _install_kubectl() {
   if command -v kubectl &>/dev/null; then
     _log "Upgrading kubectl..."
-    sudo apt-get install -y --only-upgrade kubectl 2>/dev/null || _warn "kubectl already at latest"
+    if command -v apt-get &>/dev/null; then
+      sudo apt-get install -y --only-upgrade kubectl 2>/dev/null || _warn "kubectl already at latest"
+    elif command -v dnf &>/dev/null; then
+      sudo dnf upgrade -y kubectl 2>/dev/null || _warn "kubectl already at latest"
+    elif command -v yum &>/dev/null; then
+      sudo yum upgrade -y kubectl 2>/dev/null || _warn "kubectl already at latest"
+    fi
     return
   fi
   _log "Installing kubectl..."
-  curl -fsSL https://pkgs.k8s.io/core:/stable:/v1/deb/Release.key \
-    | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-  echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1/deb/ /' \
-    | sudo tee /etc/apt/sources.list.d/kubernetes.list >/dev/null
-  sudo apt-get update -q && sudo apt-get install -y kubectl \
-    && _ok "kubectl installed" || return 1
+  if command -v apt-get &>/dev/null; then
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1/deb/Release.key \
+      | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1/deb/ /' \
+      | sudo tee /etc/apt/sources.list.d/kubernetes.list >/dev/null
+    sudo apt-get update -q && sudo apt-get install -y kubectl \
+      && _ok "kubectl installed" || return 1
+  elif command -v dnf &>/dev/null || command -v yum &>/dev/null; then
+    cat <<'EOF' | sudo tee /etc/yum.repos.d/kubernetes.repo >/dev/null
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1/rpm/repodata/repomd.xml.key
+EOF
+    if command -v dnf &>/dev/null; then
+      sudo dnf install -y kubectl && _ok "kubectl installed" || return 1
+    else
+      sudo yum install -y kubectl && _ok "kubectl installed" || return 1
+    fi
+  else
+    _err "No supported package manager found — install kubectl manually"
+    return 1
+  fi
 }
 
 _install_awscli() {
   if command -v aws &>/dev/null; then
     _log "Upgrading AWS CLI..."
     sudo /usr/local/aws-cli/v2/current/bin/aws --version &>/dev/null \
-      && sudo /usr/local/aws-cli/v2/current/bin/aws --version \
       || _warn "AWS CLI upgrade skipped — run installer manually"
     return
   fi
   _log "Installing AWS CLI..."
+  local arch
+  arch=$(_aws_arch) || return 1
   local tmp
   tmp=$(mktemp -d)
-  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "$tmp/awscliv2.zip" \
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${arch}.zip" -o "$tmp/awscliv2.zip" \
     && unzip -q "$tmp/awscliv2.zip" -d "$tmp" \
     && sudo "$tmp/aws/install" \
     && _ok "AWS CLI installed" || return 1
@@ -79,12 +123,14 @@ _install_kubevpn() {
     return
   fi
   _log "Installing kubevpn..."
+  local arch
+  arch=$(_go_arch) || return 1
   local version
   version=$(curl -fsSL https://api.github.com/repos/kubenetworks/kubevpn/releases/latest \
     | grep '"tag_name"' | cut -d'"' -f4)
   local tmp
   tmp=$(mktemp -d)
-  curl -fsSL "https://github.com/kubenetworks/kubevpn/releases/download/${version}/kubevpn_linux_amd64.tar.gz" \
+  curl -fsSL "https://github.com/kubenetworks/kubevpn/releases/download/${version}/kubevpn_linux_${arch}.tar.gz" \
     -o "$tmp/kubevpn.tar.gz" \
     && tar -xzf "$tmp/kubevpn.tar.gz" -C "$tmp" \
     && sudo mv "$tmp/kubevpn" /usr/local/bin/kubevpn \
@@ -96,35 +142,55 @@ _install_kubevpn() {
 _install_teleport() {
   if command -v tsh &>/dev/null; then
     _log "Upgrading Teleport..."
-    sudo apt-get install -y --only-upgrade teleport 2>/dev/null || _warn "teleport already at latest"
+    if command -v apt-get &>/dev/null; then
+      sudo apt-get install -y --only-upgrade teleport 2>/dev/null || _warn "teleport already at latest"
+    else
+      _warn "Teleport upgrade skipped — run the installer manually"
+    fi
     return
   fi
   _log "Installing Teleport (tsh)..."
-  curl -fsSL https://apt.releases.teleport.dev/gpg \
-    | sudo tee /usr/share/keyrings/teleport-archive-keyring.asc >/dev/null
-  echo "deb [signed-by=/usr/share/keyrings/teleport-archive-keyring.asc] https://apt.releases.teleport.dev/ubuntu $(lsb_release -cs) stable" \
-    | sudo tee /etc/apt/sources.list.d/teleport.list >/dev/null
-  sudo apt-get update -q && sudo apt-get install -y teleport \
-    && _ok "teleport installed" || return 1
+  if command -v apt-get &>/dev/null; then
+    curl -fsSL https://apt.releases.teleport.dev/gpg \
+      | sudo tee /usr/share/keyrings/teleport-archive-keyring.asc >/dev/null
+    echo "deb [signed-by=/usr/share/keyrings/teleport-archive-keyring.asc] https://apt.releases.teleport.dev/ubuntu $(lsb_release -cs) stable" \
+      | sudo tee /etc/apt/sources.list.d/teleport.list >/dev/null
+    sudo apt-get update -q && sudo apt-get install -y teleport \
+      && _ok "teleport installed" || return 1
+  else
+    local arch
+    arch=$(_go_arch) || return 1
+    local version
+    version=$(curl -fsSL https://api.github.com/repos/gravitational/teleport/releases/latest \
+      | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//')
+    local tmp
+    tmp=$(mktemp -d)
+    curl -fsSL "https://cdn.teleport.dev/teleport-v${version}-linux-${arch}-bin.tar.gz" \
+      -o "$tmp/teleport.tar.gz" \
+      && tar -xzf "$tmp/teleport.tar.gz" -C "$tmp" \
+      && sudo "$tmp/teleport/install" \
+      && _ok "teleport $version installed" || return 1
+    rm -rf "$tmp"
+  fi
 }
 
 _install_stern() {
-  if command -v stern &>/dev/null; then
-    _log "Upgrading stern..."
-    local version
-    version=$(curl -fsSL https://api.github.com/repos/stern/stern/releases/latest \
-      | grep '"tag_name"' | cut -d'"' -f4)
-    local current
-    current=$(stern --version 2>/dev/null | grep -o 'v[0-9.]*' | head -1)
-    [[ "$current" == "$version" ]] && { _warn "stern already at latest ($version)"; return; }
-  fi
-  _log "Installing stern..."
   local version
   version=$(curl -fsSL https://api.github.com/repos/stern/stern/releases/latest \
     | grep '"tag_name"' | cut -d'"' -f4)
+  if command -v stern &>/dev/null; then
+    local current
+    current=$(stern --version 2>/dev/null | grep -o 'v[0-9.]*' | head -1)
+    [[ "$current" == "$version" ]] && { _warn "stern already at latest ($version)"; return; }
+    _log "Upgrading stern to $version..."
+  else
+    _log "Installing stern $version..."
+  fi
+  local arch
+  arch=$(_go_arch) || return 1
   local tmp
   tmp=$(mktemp -d)
-  curl -fsSL "https://github.com/stern/stern/releases/download/${version}/stern_linux_amd64.tar.gz" \
+  curl -fsSL "https://github.com/stern/stern/releases/download/${version}/stern_linux_${arch}.tar.gz" \
     -o "$tmp/stern.tar.gz" \
     && tar -xzf "$tmp/stern.tar.gz" -C "$tmp" \
     && sudo mv "$tmp/stern" /usr/local/bin/stern \
@@ -137,11 +203,21 @@ _install_stern() {
 setup() {
   local errors=0
 
-  _log "Updating apt..."
-  sudo apt-get update -q && _ok "apt updated"
-
-  sudo apt-get install -y curl unzip gpg lsof expect python3 >/dev/null \
-    && _ok "Base packages ready" || { _err "Failed to install base packages"; return 1; }
+  if command -v apt-get &>/dev/null; then
+    _log "Updating apt..."
+    sudo apt-get update -q && _ok "apt updated"
+    sudo apt-get install -y curl unzip gpg lsb-release lsof expect python3 >/dev/null \
+      && _ok "Base packages ready" || { _err "Failed to install base packages"; return 1; }
+  elif command -v dnf &>/dev/null; then
+    sudo dnf install -y curl unzip gnupg lsof expect python3 >/dev/null \
+      && _ok "Base packages ready" || { _err "Failed to install base packages"; return 1; }
+  elif command -v yum &>/dev/null; then
+    sudo yum install -y curl unzip gnupg lsof expect python3 >/dev/null \
+      && _ok "Base packages ready" || { _err "Failed to install base packages"; return 1; }
+  else
+    _err "No supported package manager found (apt/dnf/yum)"
+    return 1
+  fi
 
   _install_kubectl   || (( errors++ ))
   _install_awscli    || (( errors++ ))
@@ -475,7 +551,7 @@ import hmac, hashlib, struct, time, base64, sys
 secret = sys.argv[1].upper().replace(' ', '')
 key = base64.b32decode(secret + '=' * (-len(secret) % 8))
 counter = struct.pack('>Q', int(time.time()) // 30)
-mac = hmac.new(key, counter, hashlib.sha1).digest()
+mac = hmac.new(key, counter, digestmod=hashlib.sha1).digest()
 offset = mac[-1] & 0x0f
 code = struct.unpack('>I', mac[offset:offset + 4])[0] & 0x7fffffff
 print(f'{code % 1_000_000:06d}')

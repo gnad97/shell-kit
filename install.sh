@@ -8,7 +8,7 @@ SCRIPT="$INSTALL_DIR/shell-kit.sh"
 # ── Detect OS ──────────────────────────────────────────────────────────────────
 case "$(uname -s)" in
   Darwin) remote_script="mac.sh" ;;
-  Linux)  remote_script="ubuntu.sh" ;;
+  Linux)  remote_script="linux.sh" ;;
   *)
     echo "Unsupported OS: $(uname -s)"
     exit 1
