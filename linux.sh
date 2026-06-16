@@ -125,14 +125,17 @@ _install_kubevpn() {
   _log "Installing kubevpn..."
   local arch
   arch=$(_go_arch) || return 1
-  local version
-  version=$(curl -fsSL https://api.github.com/repos/kubenetworks/kubevpn/releases/latest \
-    | grep '"tag_name"' | cut -d'"' -f4)
+  local download_url version
+  download_url=$(curl -fsSL https://api.github.com/repos/kubenetworks/kubevpn/releases/latest \
+    | grep "browser_download_url" | grep "linux_${arch}" | cut -d'"' -f4 | head -1)
+  if [[ -z "$download_url" ]]; then
+    _err "Could not find kubevpn download URL for linux/${arch}"; return 1
+  fi
+  version=$(echo "$download_url" | grep -o 'v[0-9][^/]*' | head -1)
   local tmp
   tmp=$(mktemp -d)
-  curl -fsSL "https://github.com/kubenetworks/kubevpn/releases/download/${version}/kubevpn_linux_${arch}.tar.gz" \
-    -o "$tmp/kubevpn.tar.gz" \
-    && tar -xzf "$tmp/kubevpn.tar.gz" -C "$tmp" \
+  curl -fsSL "$download_url" -o "$tmp/kubevpn.zip" \
+    && unzip -q "$tmp/kubevpn.zip" -d "$tmp" \
     && sudo mv "$tmp/kubevpn" /usr/local/bin/kubevpn \
     && sudo chmod +x /usr/local/bin/kubevpn \
     && _ok "kubevpn $version installed" || return 1
@@ -175,9 +178,15 @@ _install_teleport() {
 }
 
 _install_stern() {
-  local version
-  version=$(curl -fsSL https://api.github.com/repos/stern/stern/releases/latest \
-    | grep '"tag_name"' | cut -d'"' -f4)
+  local arch
+  arch=$(_go_arch) || return 1
+  local download_url version
+  download_url=$(curl -fsSL https://api.github.com/repos/stern/stern/releases/latest \
+    | grep "browser_download_url" | grep "linux_${arch}.tar.gz" | cut -d'"' -f4 | head -1)
+  if [[ -z "$download_url" ]]; then
+    _err "Could not find stern download URL for linux/${arch}"; return 1
+  fi
+  version=$(echo "$download_url" | grep -o 'v[0-9][^/]*' | head -1)
   if command -v stern &>/dev/null; then
     local current
     current=$(stern --version 2>/dev/null | grep -o 'v[0-9.]*' | head -1)
@@ -186,12 +195,9 @@ _install_stern() {
   else
     _log "Installing stern $version..."
   fi
-  local arch
-  arch=$(_go_arch) || return 1
   local tmp
   tmp=$(mktemp -d)
-  curl -fsSL "https://github.com/stern/stern/releases/download/${version}/stern_linux_${arch}.tar.gz" \
-    -o "$tmp/stern.tar.gz" \
+  curl -fsSL "$download_url" -o "$tmp/stern.tar.gz" \
     && tar -xzf "$tmp/stern.tar.gz" -C "$tmp" \
     && sudo mv "$tmp/stern" /usr/local/bin/stern \
     && sudo chmod +x /usr/local/bin/stern \
