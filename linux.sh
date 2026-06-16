@@ -58,7 +58,7 @@ _aws_arch() {
 }
 
 _install_kubectl() {
-  if command -v kubectl &>/dev/null; then
+  if type -P kubectl &>/dev/null; then
     _log "Upgrading kubectl..."
     if command -v apt-get &>/dev/null; then
       sudo apt-get install -y --only-upgrade kubectl 2>/dev/null || _warn "kubectl already at latest"
@@ -143,7 +143,7 @@ _install_kubevpn() {
 }
 
 _install_teleport() {
-  if command -v tsh &>/dev/null; then
+  if type -P tsh &>/dev/null; then
     _log "Upgrading Teleport..."
     if command -v apt-get &>/dev/null; then
       sudo apt-get install -y --only-upgrade teleport 2>/dev/null || _warn "teleport already at latest"
@@ -570,7 +570,7 @@ PYEOF
 
 # Checks whether the current TSH session is still valid.
 tsh-status() {
-  if ! command -v tsh &>/dev/null; then
+  if ! type -P tsh &>/dev/null; then
     _err "tsh not found in PATH"
     return 1
   fi
@@ -615,7 +615,7 @@ tsh() {
   fi
 
   local tsh_bin
-  tsh_bin=$(command -v tsh) || { _err "tsh binary not found in PATH"; return 1; }
+  tsh_bin=$(type -P tsh) || { _err "tsh binary not found in PATH"; return 1; }
 
   _log "Generating 2FA code..."
   local code

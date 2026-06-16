@@ -409,7 +409,7 @@ PYEOF
 
 # Checks whether the current TSH session is still valid.
 tsh-status() {
-  if ! command -v tsh &>/dev/null; then
+  if ! type -P tsh &>/dev/null; then
     _err "tsh not found in PATH"
     return 1
   fi
@@ -454,7 +454,7 @@ tsh() {
   fi
 
   local tsh_bin
-  tsh_bin=$(command -v tsh) || { _err "tsh binary not found in PATH"; return 1; }
+  tsh_bin=$(type -P tsh) || { _err "tsh binary not found in PATH"; return 1; }
 
   _log "Generating 2FA code..."
   local code
