@@ -58,43 +58,24 @@ _aws_arch() {
 }
 
 _install_kubectl() {
+  local arch
+  arch=$(_go_arch) || return 1
+  local latest
+  latest=$(curl -fsSL https://dl.k8s.io/release/stable.txt) || { _err "Failed to fetch kubectl latest version"; return 1; }
   if type -P kubectl &>/dev/null; then
-    _log "Upgrading kubectl..."
-    if command -v apt-get &>/dev/null; then
-      sudo apt-get install -y --only-upgrade kubectl 2>/dev/null || _warn "kubectl already at latest"
-    elif command -v dnf &>/dev/null; then
-      sudo dnf upgrade -y kubectl 2>/dev/null || _warn "kubectl already at latest"
-    elif command -v yum &>/dev/null; then
-      sudo yum upgrade -y kubectl 2>/dev/null || _warn "kubectl already at latest"
-    fi
-    return
-  fi
-  _log "Installing kubectl..."
-  if command -v apt-get &>/dev/null; then
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1/deb/Release.key \
-      | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1/deb/ /' \
-      | sudo tee /etc/apt/sources.list.d/kubernetes.list >/dev/null
-    sudo apt-get update -q && sudo apt-get install -y kubectl \
-      && _ok "kubectl installed" || return 1
-  elif command -v dnf &>/dev/null || command -v yum &>/dev/null; then
-    cat <<'EOF' | sudo tee /etc/yum.repos.d/kubernetes.repo >/dev/null
-[kubernetes]
-name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1/rpm/
-enabled=1
-gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1/rpm/repodata/repomd.xml.key
-EOF
-    if command -v dnf &>/dev/null; then
-      sudo dnf install -y kubectl && _ok "kubectl installed" || return 1
-    else
-      sudo yum install -y kubectl && _ok "kubectl installed" || return 1
-    fi
+    local current
+    current=$(command kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion":"[^"]*"' | cut -d'"' -f4)
+    [[ "$current" == "$latest" ]] && { _warn "kubectl already at latest ($latest)"; return; }
+    _log "Upgrading kubectl to $latest..."
   else
-    _err "No supported package manager found — install kubectl manually"
-    return 1
+    _log "Installing kubectl $latest..."
   fi
+  local tmp
+  tmp=$(mktemp -d)
+  curl -fsSL "https://dl.k8s.io/release/${latest}/bin/linux/${arch}/kubectl" -o "$tmp/kubectl" \
+    && sudo install -o root -g root -m 0755 "$tmp/kubectl" /usr/local/bin/kubectl \
+    && _ok "kubectl $latest installed" || return 1
+  rm -rf "$tmp"
 }
 
 _install_awscli() {
