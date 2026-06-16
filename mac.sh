@@ -39,6 +39,12 @@ _warn() { echo "[$(date '+%H:%M:%S')] ! $*"; }
 # SETUP
 # =============================================================================
 
+# Returns true only if an actual binary (not a shell function) exists in PATH.
+_has_bin() {
+  [[ -n "${ZSH_VERSION:-}" ]] && { whence -p "$1" &>/dev/null; return; }
+  type -P "$1" &>/dev/null
+}
+
 _brew_install() {
   local tool="$1" formula="${2:-$1}"
   if brew list "$formula" &>/dev/null; then
@@ -409,7 +415,7 @@ PYEOF
 
 # Checks whether the current TSH session is still valid.
 tsh-status() {
-  if ! type -P tsh &>/dev/null; then
+  if ! _has_bin tsh; then
     _err "tsh not found in PATH"
     return 1
   fi
@@ -454,7 +460,7 @@ tsh() {
   fi
 
   local tsh_bin
-  tsh_bin=$(type -P tsh) || { _err "tsh binary not found in PATH"; return 1; }
+  tsh_bin=$(command -v tsh 2>/dev/null); [[ -x "$tsh_bin" ]] || { _err "tsh binary not found in PATH"; return 1; }
 
   _log "Generating 2FA code..."
   local code

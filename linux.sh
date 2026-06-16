@@ -39,6 +39,12 @@ _warn() { echo "[$(date '+%H:%M:%S')] ! $*"; }
 # SETUP
 # =============================================================================
 
+# Returns true only if an actual binary (not a shell function) exists in PATH.
+_has_bin() {
+  [[ -n "${ZSH_VERSION:-}" ]] && { whence -p "$1" &>/dev/null; return; }
+  type -P "$1" &>/dev/null
+}
+
 # Returns "amd64" or "arm64" (Go-style naming used by kubevpn, stern, teleport).
 _go_arch() {
   case "$(uname -m)" in
@@ -62,7 +68,7 @@ _install_kubectl() {
   arch=$(_go_arch) || return 1
   local latest
   latest=$(curl -fsSL https://dl.k8s.io/release/stable.txt) || { _err "Failed to fetch kubectl latest version"; return 1; }
-  if type -P kubectl &>/dev/null; then
+  if _has_bin kubectl; then
     local current
     current=$(command kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion":"[^"]*"' | cut -d'"' -f4)
     [[ "$current" == "$latest" ]] && { _warn "kubectl already at latest ($latest)"; return; }
@@ -132,7 +138,7 @@ _install_teleport() {
   if [[ -z "$version" ]]; then
     _err "Failed to fetch teleport latest version"; return 1
   fi
-  if type -P tsh &>/dev/null; then
+  if _has_bin tsh; then
     local current
     current=$(command tsh version 2>/dev/null | grep -o 'v[0-9.]*' | head -1 | sed 's/^v//')
     [[ "$current" == "$version" ]] && { _warn "teleport already at latest (v$version)"; return; }
@@ -549,7 +555,7 @@ PYEOF
 
 # Checks whether the current TSH session is still valid.
 tsh-status() {
-  if ! type -P tsh &>/dev/null; then
+  if ! _has_bin tsh; then
     _err "tsh not found in PATH"
     return 1
   fi
@@ -594,7 +600,7 @@ tsh() {
   fi
 
   local tsh_bin
-  tsh_bin=$(type -P tsh) || { _err "tsh binary not found in PATH"; return 1; }
+  tsh_bin=$(command -v tsh 2>/dev/null); [[ -x "$tsh_bin" ]] || { _err "tsh binary not found in PATH"; return 1; }
 
   _log "Generating 2FA code..."
   local code
