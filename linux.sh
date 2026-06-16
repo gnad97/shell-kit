@@ -600,7 +600,12 @@ tsh() {
   fi
 
   local tsh_bin
-  tsh_bin=$(command -v tsh 2>/dev/null); [[ -x "$tsh_bin" ]] || { _err "tsh binary not found in PATH"; return 1; }
+  if [[ -n "${ZSH_VERSION:-}" ]]; then
+    tsh_bin=$(whence -p tsh 2>/dev/null)
+  else
+    tsh_bin=$(type -P tsh 2>/dev/null)
+  fi
+  [[ -x "$tsh_bin" ]] || { _err "tsh binary not found in PATH"; return 1; }
 
   _log "Generating 2FA code..."
   local code
