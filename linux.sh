@@ -625,7 +625,9 @@ spawn $tsh_bin login --proxy=$TELEPORT_PROXY --auth=local --user=$TELEPORT_USER 
 expect {
   -re {(?i)password} {
     send "$TELEPORT_PASSWORD\r"
-    expect -re {(?i)otp|one-time|authenticator|token}
+    exp_continue
+  }
+  -re {(?i)otp|one-time|authenticator|token|mfa} {
     send "$code\r"
     exp_continue
   }
