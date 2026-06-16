@@ -136,7 +136,7 @@ _install_kubevpn() {
   tmp=$(mktemp -d)
   curl -fsSL "$download_url" -o "$tmp/kubevpn.zip" \
     && unzip -q "$tmp/kubevpn.zip" -d "$tmp" \
-    && sudo mv "$tmp/kubevpn" /usr/local/bin/kubevpn \
+    && sudo mv "$tmp/bin/kubevpn" /usr/local/bin/kubevpn \
     && sudo chmod +x /usr/local/bin/kubevpn \
     && _ok "kubevpn $version installed" || return 1
   rm -rf "$tmp"
