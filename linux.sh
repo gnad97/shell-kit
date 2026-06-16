@@ -145,7 +145,7 @@ _install_teleport() {
   curl -fsSL "https://cdn.teleport.dev/teleport-v${version}-linux-${arch}-bin.tar.gz" \
     -o "$tmp/teleport.tar.gz" \
     && tar -xzf "$tmp/teleport.tar.gz" -C "$tmp" \
-    && sudo "$tmp/teleport/install" \
+    && sudo install -m 0755 "$tmp/teleport/tsh" /usr/local/bin/tsh \
     && _ok "teleport v$version installed" || return 1
   rm -rf "$tmp"
 }
